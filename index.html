@@ -1,0 +1,426 @@
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+    <title>Trail Management System</title>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/3.27/dijit/themes/nihilo/nihilo.css">
+    <link rel="stylesheet" href="https://js.arcgis.com/3.27/esri/css/esri.css">
+  	<link rel="stylesheet" type="text/css" href="CSS/indexCSS.css">
+
+    <script src="https://js.arcgis.com/3.27/"></script>
+    <script src="JS/editor.js"></script>
+    <script>
+      var map, tb;
+
+      require([
+      	"dojo/dom",
+      	"dojo/on",
+
+        "dojo/dom-construct",
+        "esri/map",
+        "esri/tasks/GeometryService",
+
+        "esri/layers/ArcGISTiledMapServiceLayer",
+        "esri/layers/FeatureLayer",
+
+        "esri/Color",
+        "esri/symbols/SimpleMarkerSymbol",
+        "esri/symbols/SimpleLineSymbol",
+        "esri/graphic",
+        "esri/symbols/SimpleFillSymbol",
+        "esri/tasks/BufferParameters",
+
+        "esri/toolbars/draw",
+        "dojo/query",
+        "esri/geometry/normalizeUtils",
+
+		"dijit/form/Slider",
+		"dijit/form/HorizontalSlider",
+		"esri/dijit/HorizontalSlider",
+		
+        "esri/dijit/editing/Editor",
+        "esri/dijit/editing/TemplatePicker",
+        "esri/dijit/LayerList",
+        "esri/arcgis/utils",
+		"esri/urlUtils",
+		"esri/dijit/Measurement",
+		"esri/layers/ArcGISDynamicMapServiceLayer",
+		"esri/dijit/Search",
+		"esri/dijit/BasemapToggle",
+		"esri/dijit/HomeButton",
+
+		"esri/dijit/Popup",
+        "esri/dijit/PopupTemplate",
+        "dijit/registry",
+
+        "esri/config",
+        "dojo/i18n!esri/nls/jsapi",
+
+        "dojo/_base/array", 
+		"dojo/parser", 
+		"dojo/keys",
+
+        "dijit/layout/BorderContainer", 
+		"dijit/layout/ContentPane", 
+		"dijit/layout/AccordionContainer",
+        "dojo/domReady!"
+		
+      ], function(
+        dom, on, 
+        domConstruct, Map, 
+        GeometryService,
+        ArcGISTiledMapServiceLayer, FeatureLayer,
+        Color, SimpleMarkerSymbol, SimpleLineSymbol,
+        graphic, SimpleFillSymbol, BufferParameters,
+        Draw, query, normalizeUtils, Slider, HorizontalSlider, HorizontalSlider,
+        Editor, TemplatePicker, LayerList, arcgisUtils,
+        urlUtils, Measurement, ArcGISDynamicMapServiceLayer,
+        Search, BasemapToggle, HomeButton, Popup, PopupTemplate, registry,
+        esriConfig, jsapiBundle,
+        arrayUtils, parser, keys, ContentPane, AccordionContainer
+      ) {
+        parser.parse();
+
+        var popupOptions = {
+            marginLeft: "20",
+            marginTop: "20"
+         };
+
+        //create a popup to replace the map's info window
+        var popup = new Popup(popupOptions, domConstruct.create("div"));
+
+		// Popup template for trails layer
+        var trails_popup = new PopupTemplate({
+            title: "Trail Information",
+            fieldInfos: [
+              {
+                fieldName: "trail_name",
+                visible: true,
+                label: "Trail Name:"
+              },
+              {
+                fieldName: "trail_type",
+                visible: true,
+                label: "Trail Type:"
+              },
+			  {
+                fieldName: "GPS_Length",
+                visible: true,
+                label: "Trail Mileage:"
+              },
+              ],
+          });
+
+		// Popup template for trail obstacle layer
+        var obstacle_popup = new PopupTemplate({
+            title: "Trail Information",
+            fieldInfos: [
+              {
+                fieldName: "feat_type",
+                visible: true,
+                label: "Obstacle Type:"
+              },
+              ],
+          });
+		// Popup template for quarry layer
+        var issues_popup = new PopupTemplate({
+            title: "Trail Issue",
+            fieldInfos: [
+              {
+                fieldName: "trail_issue_category",
+                visible: true,
+                label: "Issue Category: "
+              },
+              {
+                fieldName: "issue_category_other",
+                visible: true,
+                label: "Issue Category Other: "
+              },
+              {
+                fieldName: "description_of_issue",
+                visible: true,
+                label: "Description of Issue: "
+              },
+              {
+                fieldName: "CreationDate",
+                visible: true,
+                label: "Time Stamp: "
+              },
+              ],
+              showAttachments: true
+            
+          });
+
+		////////////// ADD Trail Data for Quarry ////////////////////////
+		var trails = new FeatureLayer("https://services3.arcgis.com/eyU1lVcSnKSGItET/arcgis/rest/services/Quarry_Trails/FeatureServer/0",{
+			mode: FeatureLayer.MODE_ONDEMAND, 
+			id: "Trails",
+			infoTemplate: trails_popup,
+			outFields: ['*']
+		});
+
+	    var obstacle = new FeatureLayer("https://services3.arcgis.com/eyU1lVcSnKSGItET/arcgis/rest/services/Quarry_Obstacles/FeatureServer/0",{
+			mode: FeatureLayer.MODE_ONDEMAND, 
+			infoTemplate: obstacle_popup,
+			id: "Obstacle",
+			outFields: ['*']
+		});
+		
+		var TrailIssues = new FeatureLayer("https://services3.arcgis.com/eyU1lVcSnKSGItET/arcgis/rest/services/survey123_f4f7b5c956524a7ebefcc7d08b78c041/FeatureServer/0",{
+			mode: FeatureLayer.MODE_ONDEMAND, 
+			id: "Quarry Trail Issues",
+			infoTemplate: issues_popup,
+			outFields: ['*']
+		});  
+	
+		// Add layers to map
+	    map.addLayers([TrailIssues,obstacle,trails]);
+
+	    // Basemap layer added by itself for the layer list widget
+	    var bmLayerID = map.getLayer(map.layerIds[0]);
+      
+	    // Layer list object for ListLayer widget
+		var LL = [{layer: bmLayerID, id:"Basemap"},{layer: TrailIssues, title:"Trail Issue"},{layer: obstacle, title:"Trail Feature"},{layer: trails, title:"Trail"}]; 
+		 
+	    // Layer List Widget
+		var myWidget = new LayerList({
+           map: map,
+           layers: LL,
+           showOpacitySlider: true,
+           showLegend: true
+        },"layerList");	
+        myWidget.startup();    
+		
+        // measurement widget
+        var measurement = new Measurement({
+          map: map
+        },"measurementDiv");
+        measurement.startup();  
+
+        var search = new Search({
+            map: map
+         }, "search");
+         search.startup();
+//https://developers.arcgis.com/javascript/3/jsapi/basemaptoggle-amd.html
+         var toggle = new BasemapToggle({
+	        map: map,
+	        basemap: "hybrid"
+	      }, "BasemapToggle");
+	      toggle.startup();
+
+        var home = new HomeButton({
+        map: map
+      }, "HomeButton");
+      home.startup();
+	//Use slider to show water gage heights and the impacts from flooding
+	var horizontalSlider = new HorizontalSlider({
+			    	id: "mySlider",
+			    	labels: ["0","1","2","3","4","5","6","7","8","9","10","11"],
+			    	value: 0,
+			        minimum: 0,
+			        maximum: 11,
+			        discreteValues: 12,
+			        intermediateChanges: true,
+			    	onChange: function(value){
+				        dojo.byId("sliderValue").value = "Distance: "+value+" Feet";
+				      	}
+			    	}, "slider");
+			    horizontalSlider.startup();
+        	
+
+      });
+    </script>
+
+ </head>
+  <body class="nihilo">
+
+    <!-- The main Dojo container holding all of the content of the page -->
+    <div id="main" data-dojo-type="dijit/layout/BorderContainer" data-dojo-props="design:'headline'" style="height:width:100%;height:100%">
+
+      <!-- The Dojo Header section of the webpage -->
+      <div data-dojo-type="dijit/layout/ContentPane" id="header" data-dojo-props="region:'top'" style="background-color: #c1ed7b; color: black; height: 95x; padding: 0">
+       	<a href="_blank" target="_blank">
+        	<img src="Files/capture.jpg">
+        </a>
+        <!--Trail Management System (ONLY TEXT in header title-->
+      </div>
+
+    <!-- The left sidebar section of the site -->
+    <div data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'left'" style="width: 310px;overflow:hidden; background-color: #c1ed7b; color: black;">
+
+    	<!-- The Accordion Container - https://dojotoolkit.org/reference-guide/1.10/dijit/layout/AccordionContainer.html -->
+		<div data-dojo-type="dijit/layout/AccordionContainer" style="height: 500px;">
+			
+			<!-- The Accordion container dropdown for the System Welcome Screen -->	
+	        <div data-dojo-type="dijit/layout/ContentPane" title="Trail Management System" selected="true" style="color: black">
+	        	<br>
+	        	<b>Welcome to the Trail Management System</b>
+				<br><br>
+				<i>The intent of this system is to help trail stewards and land managers manage, maintain, and build sustainable trails.</i>
+	            <br>
+				<br>
+				<img src="Files/trailimage.jpg">
+	        </div>
+			
+			<!-- The Accordion container dropdown that holds the map layers -->
+	        <div data-dojo-type="dijit/layout/ContentPane" title="Trail Features">
+	            <div id="layerList"></div>  			
+	        </div>
+			
+			<!-- The Accordian container dropdown that holds the Survey123 application -->
+	        <div data-dojo-type="dijit/layout/ContentPane" title="Trail Issue Tracker" selected="true">
+	            
+	            <span style="font-size: 12pt">Trail Maintenance is an ongoing component of trail management. Support your trails by helping us track issues on the trails!</span> 
+	            <br></br> 
+              <button type="button">
+                  <a class="suvButt" href="https://survey123.arcgis.com/share/f4f7b5c956524a7ebefcc7d08b78c041" target="blank">Trail Issue Tracker</a>
+              </button>
+			  <br>
+				<br>
+              <img src="Files/trail-issue.jpg">  
+	        </div>
+			
+	        <!-- The Accordion container dropdown that holds the graphic drawing tools -->
+	        <div data-dojo-type="dijit/layout/ContentPane" title="Trail Design Graphic Tools" style="color: black">
+	            <div>Select a feature then draw on map to add trail graphic</div>
+	            <button data-dojo-type="dijit/form/Button">Point</button>
+	            <button data-dojo-type="dijit/form/Button">Line</button>
+	            <button data-dojo-type="dijit/form/Button">Polygon</button>
+	            <button data-dojo-type="dijit/form/Button">Freehand Polygon</button>
+		    	<button data-dojo-type="dijit/form/Button">Arrow</button>
+	            <button data-dojo-type="dijit/form/Button">Freehand Polyline</button>
+	            <button data-dojo-type="dijit/form/Button">Circle</button>
+	            <br><br>
+	            <input id="FillcheckBox" />
+	            <label for="FillcheckBox">Solid Fill</label>
+		    	<div></div>
+		    	<input id="MeasCheckBox" />
+	                <label for="MeasCheckBox">Add Measurements</label>
+		    		<div id="units"></div>
+		    	<br><br>
+		    	Size/Thickness:
+	            <div id="spinnerId1"></div>
+		    	<br><br>
+		    	<div id="TransSlider"></div>
+		    	<label for="slider1input">Transparency:</label>
+		    	<input readonly id="slider1input" size="1" value="0%"/>
+	                <br><br>Graphic/Text Color:
+	                <div></div>
+	                <div id="colorButton" style="background-color: #FFFFFF; border-color: black; border-width: 1px;" dojoType="dijit/form/DropDownButton"> <span id="colorText"> <span id="colorSwatch" style="height: 10px; width: 10px; border: 1px solid black; background-color: black;">&nbsp;&nbsp;</span></span>
+	                    <div data-dojo-type="dijit/TooltipDialog" id="colorPaletteDialog" title="Color Palette">
+	                        <div data-dojo-type="dijit/ColorPalette" id="colorPaletteWidget"></div>
+	                    </div>
+	                </div>
+	                <br><br>
+	                <input id="value0Box" data-dojo-type="dijit/form/TextBox" value="" placeHolder="enter your text here" data-dojo-props="intermediateChanges:true"></input>
+	                <br><br>
+		    		<button data-dojo-type="dijit/form/Button">Text</button>
+		    		<br><br>Font Size:
+	                <div id="spinnerId2"></div>
+		    			<div data-dojo-type="dijit/form/ToggleButton" id="bold" data-dojo-props="iconClass:'dijitEditorIcon dijitEditorIconBold', showLabel:false"></div>
+		    			<div data-dojo-type="dijit/form/ToggleButton" id="underline" data-dojo-props="iconClass:'dijitEditorIcon dijitEditorIconUnderline', showLabel:false"></div>
+		    			<div data-dojo-type="dijit/form/ToggleButton" id="italic" data-dojo-props="iconClass:'dijitEditorIcon dijitEditorIconItalic', showLabel:false"></div>
+	                <br><br> 
+		    	<button data-dojo-type="dijit/form/Button" id="undo"data-dojo-props="disabled: true, iconClass:'dijitEditorIcon dijitEditorIconUndo'"></button>
+		    	<button data-dojo-type="dijit/form/Button" id="redo"data-dojo-props="disabled: true, iconClass:'dijitEditorIcon dijitEditorIconRedo'"></button>
+		    	<br><br>
+	            <button id="clear" data-dojo-type="dijit.form.Button" type="button" data-dojo-attach-point="button">Clear all graphics</button>
+	            <br><br><i>Note: Right-click on your Graphic to access additional options.</i>
+	        </div>
+
+	        <!-- The Accordion container dropdown that holds the FUTURE USGS Hydro viewer and Flood Mapping Data-->
+			<!--https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer-->
+			
+	        <div data-dojo-type="dijit/layout/ContentPane" title="Trail Impacts From Floods" style="color: black">
+	        	<br>
+	            View river gage heights and other river details<br>
+	            <a href="https://waterdata.usgs.gov/monitoring-location/01668000/?agency_cd=USGS" class="button" target="_blank"> River Gage Details </a>
+	            <br><br>
+				<img src="Files/gage.jpg">
+				<br><br>
+				
+	            <div dojoType="dijit.layout.ContentPane" region="bottom"
+				style="width:100%; border-color: black; border-style: solid; border-width: 1px; padding: 0px; background-color: white"
+				minSize=10 maxSize=100>
+				<div class="barFill"><p class="barText">River Gage Height </p></div>
+	             
+             	<div id="slider"></div><br>
+				<input type="text" id="sliderValue" dojoType="dijit.form.TextBox" value="Distance: 0 Feet"/>
+			<br>    
+				<button data-dojo-type="dijit/form/Button" id="buffer_button" 
+				type="button" class="button" target="_blank">Show Flood Impacts</button>
+            </div>
+			<br><br>
+	            View the local hydrology<br>
+	            <a href="https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer" class="button" target="_blank"> Hydrology Overview </a>
+			</div>
+			
+			<!-- The Accordion container dropdown that holds the Field Data Collection -->
+			
+	        <div data-dojo-type="dijit/layout/ContentPane" title="Field Data Collection" style="color: black">
+	        	<br>
+	        	<b>Future services for collecting trail data in the field</b>
+	            <br><br>
+				<img src="Files/gps.jpg">	
+			</div>
+			
+			 <!-- The Accordian section that holds the map tools -->
+	        <div data-dojo-type="dijit/layout/ContentPane" title="Mapping, Measuring, and Printing Tools" style="color: black">
+	        	<br>				
+	        	<button data-dojo-type="dijit/form/Button"
+	        			id="printTime"  
+	        			onclick="javascript:printDiv('mapDiv')"
+						class="tool"
+	        			style="display: block; margin: 0 auto; text-align: center;")>Print Map</button>
+						<br>
+						<i>Note: Print in landscape for best results.</i>
+	        	<br><hr />
+	        	<br>
+	        	<div id="bufferDiv" style="text-align: center; font-weight: bold">Create Trail Buffers for environmental, cultural, and habitat offsets
+	        		<br><br>
+	        		<!-- data-dojo-type="dijit/form/Button" -->
+	        		<button type="button" class="tool" id="point">Point</button>&nbsp
+				    <button type="button" class="tool" id="polyline">Line</button>&nbsp
+				    <button type="button" class="tool" id="polygon">Area</button>&nbsp
+				    <br/>
+				
+				    <div><b>Set Buffer Trail Distance Parameters</b></div><br>
+				    Distance:&nbsp;<input type="text" id="distance" size="5" value="25" />
+				    <select id="unit" style="width:100px;">
+						<option value="UNIT_FOOT">Feet</option>
+				      <option value="UNIT_STATUTE_MILE">Miles</option>
+				    </select>
+					<hr />
+				    <br>	
+				<div id="measurementDiv"></div>					
+	        	</div>	        	
+	            <div id="measurementDiv"></div>
+				<button data-dojo-type="dijit/form/Button" id="clearGraphics" style="text-align: center; font-weight: bold">Clear All Graphics</button>
+	        </div>
+		</div>
+	</div>
+		         
+    <!-- The Dojo center section of the webpage that holds the map and it's widgets -->  
+    <div data-dojo-type="dijit/layout/ContentPane" id="mapDiv" data-dojo-props="region:'center'" style="background-color: grey; padding: 0">
+      	<div id="search"></div>
+      	<div id="BasemapToggle"></div>  
+        <div id="HomeButton"></div>    	
+      	<div id="map" style="width: 100%; height: 100%; padding: 0;"></div>
+    </div>
+</div>
+</body>
+  <script>
+
+    // Funtion for operating the print button upon click
+   	function printDiv(divID) {
+        
+        var divElements = document.getElementById("mapDiv").innerHTML;
+        window.print();
+     };
+
+  </script>
+</html>
